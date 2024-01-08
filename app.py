@@ -11,7 +11,6 @@ import streamlit as st
 import pandas as pd
 import json
 import requests
-from bs4 import BeautifulSoup
 
 # Function to parse a single patient record from FHIR format
 def parse_patient_record(record):
