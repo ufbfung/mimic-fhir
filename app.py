@@ -10,6 +10,8 @@ Original file is located at
 import streamlit as st
 import pandas as pd
 import json
+import requests
+from bs4 import BeautifulSoup
 
 # Function to parse a single patient record from FHIR format
 def parse_patient_record(record):
@@ -34,83 +36,48 @@ def parse_patient_record(record):
 
     return patient_data
 
-# Function to parse a single observation record
-def parse_observation_record(record):
-    observation_data = {
-        'id': record.get('id', None),
-        'status': record.get('status', None),
-        'category_code': record.get('category', [{}])[0].get('coding', [{}])[0].get('code', None),
-        'test_code': record.get('code', {}).get('coding', [{}])[0].get('code', None),
-        'test_name': record.get('code', {}).get('coding', [{}])[0].get('display', None),
-        'patient_reference': record.get('subject', {}).get('reference', None),
-        'encounter_reference': record.get('encounter', {}).get('reference', None),
-        'effectiveDateTime': record.get('effectiveDateTime', None),
-        'value': None,
-        'unit': None
-    }
+# Function to download a file from Google Drive
+def download_file_from_google_drive(file_id):
+    base_url = "https://drive.google.com/uc?export=download"
+    session = requests.Session()
 
-    # Check if 'valueQuantity' exists before accessing it
-    if 'valueQuantity' in record:
-        observation_data['value'] = record['valueQuantity'].get('value', None)
-        observation_data['unit'] = record['valueQuantity'].get('unit', None)
+    response = session.get(base_url, params={'id': file_id}, stream=True)
+    token = get_confirm_token(response)
+    if token:
+        params = {'id': file_id, 'confirm': token}
+        response = session.get(base_url, params=params, stream=True)
 
-    return observation_data
+    return response.content.decode('utf-8')
 
-def find_observations_for_patient(df, patient_ref):
-    """
-    Function to find all observation resources for a specific patient.
+def get_confirm_token(response):
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            return value
+    return None
 
-    Parameters:
-    df (DataFrame): The DataFrame containing observation data.
-    patient_ref (str): The patient reference to filter by.
-
-    Returns:
-    DataFrame: A DataFrame containing only the observations for the specified patient.
-    """
-    filtered_df = df[df['patient_reference'] == patient_ref]
-    return filtered_df
-
-# Load data (This should be adjusted based on how you're loading data in your actual app)
-patients = []
-with open('Patient.ndjson', 'r') as file:
-    for line in file:
-        json_record = json.loads(line)
-        patients.append(parse_patient_record(json_record))
-
-observations = []
-with open('ObservationLabevents.ndjson', 'r') as file:
-    for line in file:
-        json_record = json.loads(line)
-        observations.append(parse_observation_record(json_record))
-
-patient_df = pd.DataFrame(patients)
-observation_df = pd.DataFrame(observations)
+# Load data
+def load_data():
+    pat_file_id = '1SxaVQAAjWzJPST4z0qkq-LRlx2xzQbDw'
+    patient_data_content = download_file_from_google_drive(pat_file_id)
+    patient_records = [parse_patient_record(json.loads(line)) for line in patient_data_content.splitlines()]
+    return pd.DataFrame(patient_records)
 
 # Streamlit app
 def main():
     st.title("MIMIC on FHIR Data Explorer")
+    st.write("Explore MIMIC on FHIR patient data.")
 
-    st.write("Explore MIMIC on FHIR patient data and lab observations.")
+    # Load data
+    patient_df = load_data()
 
-    # User input for patient reference
-    patient_ref = st.text_input("Enter Patient Reference ID:", "Patient/")
+    # Gender filter
+    gender = st.radio("Select Gender:", ('All', 'Male', 'Female'))
+    if gender != 'All':
+        patient_df = patient_df[patient_df['gender'] == gender.lower()]
 
-    if st.button("Find Observations"):
-        if patient_ref:
-            observations_for_patient = find_observations_for_patient(observation_df, patient_ref)
-            if not observations_for_patient.empty:
-                st.write(f"Observations for Patient ID: {patient_ref}")
-                st.dataframe(observations_for_patient)
-
-                # Display the top 5 most common labs
-                top_labs = observations_for_patient['test_name'].value_counts().head(5)
-                st.write("Top 5 Most Common Labs:")
-                st.bar_chart(top_labs)
-            else:
-                st.write("No observations found for this patient.")
-        else:
-            st.write("Please enter a valid Patient Reference ID.")
+    # Display patient data
+    if st.button("Show Patient Data"):
+        st.dataframe(patient_df)
 
 if __name__ == "__main__":
     main()
-
