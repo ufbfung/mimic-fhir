@@ -72,11 +72,15 @@ def main():
     # Gender filter
     gender = st.radio("Select Gender:", ('All', 'Male', 'Female'))
     if gender != 'All':
-        patient_df = patient_df[patient_df['gender'] == gender.lower()]
+        filtered_df = patient_df[patient_df['gender'] == gender.lower()]
+    else:
+        filtered_df = patient_df
 
     # Display patient data
-    if st.button("Show Patient Data"):
-        st.dataframe(patient_df)
+    st.dataframe(filtered_df)
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
