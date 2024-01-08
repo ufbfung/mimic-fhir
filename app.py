@@ -11,6 +11,12 @@ import streamlit as st
 import pandas as pd
 import json
 import requests
+from datetime import datetime
+
+def calculate_age(birthdate_str):
+    birthdate = datetime.strptime(birthdate_str, '%Y-%m-%d')
+    today = datetime.today()
+    return today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
 
 # Function to parse a single patient record from FHIR format
 def parse_patient_record(record):
@@ -59,7 +65,9 @@ def load_data():
     pat_file_id = '1SxaVQAAjWzJPST4z0qkq-LRlx2xzQbDw'
     patient_data_content = download_file_from_google_drive(pat_file_id)
     patient_records = [parse_patient_record(json.loads(line)) for line in patient_data_content.splitlines()]
-    return pd.DataFrame(patient_records)
+    patient_df = pd.DataFrame(patient_records)
+    patient_df['age'] = patient_df['birthDate'].apply(calculate_age)
+    return patient_df
 
 # Streamlit app
 def main():
@@ -72,12 +80,21 @@ def main():
     # Gender filter
     gender = st.radio("Select Gender:", ('All', 'Male', 'Female'))
     if gender != 'All':
-        filtered_df = patient_df[patient_df['gender'] == gender.lower()]
-    else:
-        filtered_df = patient_df
+        patient_df = patient_df[patient_df['gender'] == gender.lower()]
+
+    # Race filter
+    unique_races = patient_df['race'].dropna().unique()
+    races = ['All'] + list(unique_races)
+    race = st.selectbox("Select Race:", races)
+    if race != 'All':
+        patient_df = patient_df[patient_df['race'] == race]
+
+    # Age filter
+    min_age, max_age = st.slider("Select Age Range:", 0, 100, (0, 100))
+    patient_df = patient_df[(patient_df['age'] >= min_age) & (patient_df['age'] <= max_age)]
 
     # Display patient data
-    st.dataframe(filtered_df)
+    st.dataframe(patient_df)
 
 if __name__ == "__main__":
     main()
